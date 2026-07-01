@@ -1,6 +1,5 @@
 import { existsSync, writeFileSync } from 'node:fs';
-export function initCommand(force = false) {
-  const out = 'skillforge.workflow.yaml';
+export function initCommand(force = false, out = 'skillforge.workflow.yaml') {
   if (existsSync(out) && !force) throw new Error(`${out} already exists. Pass --force to overwrite.`);
   const content = `id: code-change-verification
 title: Code Change Verification

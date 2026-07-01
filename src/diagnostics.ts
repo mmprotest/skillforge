@@ -3,5 +3,5 @@ export type Diagnostic = { severity: Severity; path: string; message: string; ta
 export const hasErrors = (d: Diagnostic[]) => d.some(x => x.severity === 'error');
 export function formatDiagnostics(diags: Diagnostic[]): string {
   if (diags.length === 0) return 'No diagnostics.';
-  return diags.map(d => `${d.severity}${d.target ? ' '+d.target : ''} ${d.path}:\n  ${d.message}`).join('\n\n');
+  return diags.map(d => { const path = d.target && d.path.startsWith(`${d.target}.`) ? d.path : (d.target ? `${d.target}.${d.path}` : d.path); return `${d.severity} ${path}:\n  ${d.message}`; }).join('\n\n');
 }

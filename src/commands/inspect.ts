@@ -1,0 +1,7 @@
+import { formatDiagnostics } from '../diagnostics.js';
+import { importArtifact } from '../importers/index.js';
+import type { SourceFormat } from '../importers/types.js';
+import { loadAndValidate } from '../validate.js';
+import { renderWorkflow } from '../renderers/index.js';
+import { defaultTargets, conversionDiagnostics } from '../converters/convert.js';
+export async function runInspectCommand(args:{source:string; from?:SourceFormat; id?:string}) { try { const imp=importArtifact(args.source,{from:args.from,id:args.id}); const targets=defaultTargets(imp.sourceFormat); const diags=[...imp.diagnostics,...conversionDiagnostics(imp.workflow,imp.sourceFormat,targets,imp.metadata)]; return {code:0,stdout:`Detected source format: ${imp.sourceFormat}\nWorkflow: ${imp.workflow.id} — ${imp.workflow.title}\nEnabled targets: ${Object.entries(imp.workflow.targets).filter(([,v])=>v.enabled).map(([k])=>k).join(', ')}\nPossible outputs:\n${renderWorkflow(imp.workflow,args.source,targets).map(f=>`- ${f.path}`).join('\n')}\n${formatDiagnostics(diags)}`,stderr:''}; } catch { const r=loadAndValidate(args.source); if(!r.workflow) return {code:1,stdout:'',stderr:formatDiagnostics(r.diagnostics)}; return {code:0,stdout:`Workflow: ${r.workflow.id} — ${r.workflow.title}\nEnabled targets: ${Object.entries(r.workflow.targets).filter(([,v])=>v.enabled).map(([k])=>k).join(', ')}\nGenerated paths:\n${renderWorkflow(r.workflow,args.source).map(f=>`- ${f.path}`).join('\n')}\n${formatDiagnostics(r.diagnostics)}`,stderr:''}; } }
