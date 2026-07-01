@@ -1,0 +1,39 @@
+id: code-change-verification
+title: Code Change Verification
+description: Run mandatory verification before handing off code changes.
+version: 0.1.0
+triggers:
+  phrases: [verify changes, before PR, code review]
+  globs: [src/**/*.ts, tests/**/*.ts]
+  manual: true
+scope:
+  paths: [src/**, tests/**]
+inputs:
+  - name: issue_number
+    optional: true
+    description: GitHub issue or task reference.
+workflow:
+  goal: Verify code changes before final response.
+  steps:
+    - Review the diff and identify affected areas.
+    - Run lint, typecheck, and relevant tests.
+    - Investigate failures instead of hiding them.
+    - Summarize exact commands and results.
+commands:
+  verify: [pnpm lint, pnpm typecheck, pnpm test]
+safety:
+  allowedTools: [Read, Grep, Bash(pnpm *)]
+  never:
+    - Do not claim tests passed unless they actually ran.
+    - Do not delete user work to make checks pass.
+outputs:
+  successCriteria:
+    - Changed areas are summarized.
+    - Verification commands are listed.
+    - Failures are reported honestly.
+targets:
+  claude: { enabled: true }
+  codex: { enabled: true }
+  agents: { enabled: true }
+  cursor: { enabled: true }
+  copilot: { enabled: true }
