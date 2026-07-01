@@ -1,10 +1,27 @@
 #!/usr/bin/env node
-import { Command } from 'commander'; import { loadAndValidate } from './validate.js'; import { formatDiagnostics, hasErrors } from './diagnostics.js'; import { renderWorkflow, parseTargets } from './renderers/index.js'; import { writeGenerated, diffGenerated, checkGenerated } from './file-writer.js'; import { initCommand } from './commands/init.js';
-const program=new Command(); program.name('skillforge').version('0.1.0');
-function buildFiles(file:string, opts:any){ const r=loadAndValidate(file); console.log(formatDiagnostics(r.diagnostics)); if(hasErrors(r.diagnostics)||!r.workflow) process.exit(1); return renderWorkflow(r.workflow,file,parseTargets(opts.targets)); }
-program.command('init').option('--force').action(o=>{try{console.log(`Created ${initCommand(!!o.force)}`)}catch(e){console.error((e as Error).message);process.exit(1)}});
-program.command('validate <workflow>').action(f=>{const r=loadAndValidate(f); console.log(formatDiagnostics(r.diagnostics)); process.exit(hasErrors(r.diagnostics)?1:0);});
-program.command('build <workflow>').option('--targets <list>').option('--out <dir>','.').option('--write').option('--force').action((f,o)=>{try{const files=buildFiles(f,o); if(o.write){ console.log('Written files:\n'+writeGenerated(files,o.out,!!o.force).join('\n')); } else { console.log('Generated files (dry run):\n'+files.map(x=>`${x.target}\t${x.path}`).join('\n')); }}catch(e){console.error((e as Error).message);process.exit(1)}});
-program.command('diff <workflow>').option('--targets <list>').option('--out <dir>','.').action((f,o)=>{try{console.log(diffGenerated(buildFiles(f,o),o.out));}catch(e){console.error((e as Error).message);process.exit(1)}});
-program.command('check <workflow>').option('--targets <list>').option('--out <dir>','.').action((f,o)=>{try{const stale=checkGenerated(buildFiles(f,o),o.out); if(stale.length){console.error('Stale or missing generated files:\n'+stale.join('\n')); process.exit(1);} console.log('Generated files are up to date.');}catch(e){console.error((e as Error).message);process.exit(1)}});
+import { Command } from 'commander';
+import { initCommand } from './commands/init.js';
+import { runValidateCommand } from './commands/validate.js';
+import { runBuildCommand } from './commands/build.js';
+import { runDiffCommand } from './commands/diff.js';
+import { runCheckCommand } from './commands/check.js';
+import { parseTargets } from './renderers/index.js';
+
+const program = new Command();
+program.name('skillforge').version('0.1.0');
+function finish(r: { code: number; stdout?: string; stderr?: string }) {
+  if (r.stdout) console.log(r.stdout);
+  if (r.stderr) console.error(r.stderr);
+  if (r.code) process.exit(r.code);
+}
+async function run(fn: () => Promise<{ code: number; stdout?: string; stderr?: string }>) {
+  try { finish(await fn()); } catch (e) { console.error((e as Error).message); process.exit(1); }
+}
+program.command('init').option('--force', 'Overwrite existing workflow').action(o => {
+  try { console.log(`Created ${initCommand(!!o.force)}`); } catch (e) { console.error((e as Error).message); process.exit(1); }
+});
+program.command('validate <workflow>').action(f => run(() => runValidateCommand(f)));
+program.command('build <workflow>').option('--targets <list>', 'Comma-separated targets').option('--out <dir>', 'Output directory', '.').option('--write', 'Write files').option('--force', 'Overwrite unmanaged generated targets').action((f, o) => run(() => runBuildCommand({ workflow: f, out: o.out, targets: parseTargets(o.targets), write: !!o.write, force: !!o.force })));
+program.command('diff <workflow>').option('--targets <list>', 'Comma-separated targets').option('--out <dir>', 'Output directory', '.').action((f, o) => run(() => runDiffCommand({ workflow: f, out: o.out, targets: parseTargets(o.targets) })));
+program.command('check <workflow>').option('--targets <list>', 'Comma-separated targets').option('--out <dir>', 'Output directory', '.').action((f, o) => run(() => runCheckCommand({ workflow: f, out: o.out, targets: parseTargets(o.targets) })));
 program.parse();

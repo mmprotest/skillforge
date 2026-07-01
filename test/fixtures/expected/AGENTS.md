@@ -4,6 +4,12 @@
 
 Goal: Verify code changes before final response.
 
+Workflow:
+1. Review the diff and identify affected areas.
+2. Run lint, typecheck, and relevant tests.
+3. Investigate failures instead of hiding them.
+4. Summarize exact commands and results.
+
 Relevant paths:
 - src/**
 - tests/**
