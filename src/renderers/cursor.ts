@@ -1,0 +1,2 @@
+import type { NormalizedWorkflow } from '../normalize.js'; import type { GeneratedFile } from './shared.js'; import { md, notice } from './shared.js';
+export function renderCursor(w:NormalizedWorkflow, src='workflow.yaml'):GeneratedFile[]{ const fm=['---',`description: ${w.description}`]; if(w.triggers.globs.length) fm.push('globs:',...w.triggers.globs.map(g=>`  - "${g}"`)); fm.push('alwaysApply: false','---'); return [{path:`.cursor/rules/${w.id}.mdc`,content:`${notice(src)}\n${fm.join('\n')}\n\n${md(w,{when:false})}`,target:'cursor'}]; }

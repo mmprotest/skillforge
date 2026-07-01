@@ -1,0 +1,10 @@
+#!/usr/bin/env node
+import { Command } from 'commander'; import { loadAndValidate } from './validate.js'; import { formatDiagnostics, hasErrors } from './diagnostics.js'; import { renderWorkflow, parseTargets } from './renderers/index.js'; import { writeGenerated, diffGenerated, checkGenerated } from './file-writer.js'; import { initCommand } from './commands/init.js';
+const program=new Command(); program.name('skillforge').version('0.1.0');
+function buildFiles(file:string, opts:any){ const r=loadAndValidate(file); console.log(formatDiagnostics(r.diagnostics)); if(hasErrors(r.diagnostics)||!r.workflow) process.exit(1); return renderWorkflow(r.workflow,file,parseTargets(opts.targets)); }
+program.command('init').option('--force').action(o=>{try{console.log(`Created ${initCommand(!!o.force)}`)}catch(e){console.error((e as Error).message);process.exit(1)}});
+program.command('validate <workflow>').action(f=>{const r=loadAndValidate(f); console.log(formatDiagnostics(r.diagnostics)); process.exit(hasErrors(r.diagnostics)?1:0);});
+program.command('build <workflow>').option('--targets <list>').option('--out <dir>','.').option('--write').option('--force').action((f,o)=>{try{const files=buildFiles(f,o); if(o.write){ console.log('Written files:\n'+writeGenerated(files,o.out,!!o.force).join('\n')); } else { console.log('Generated files (dry run):\n'+files.map(x=>`${x.target}\t${x.path}`).join('\n')); }}catch(e){console.error((e as Error).message);process.exit(1)}});
+program.command('diff <workflow>').option('--targets <list>').option('--out <dir>','.').action((f,o)=>{try{console.log(diffGenerated(buildFiles(f,o),o.out));}catch(e){console.error((e as Error).message);process.exit(1)}});
+program.command('check <workflow>').option('--targets <list>').option('--out <dir>','.').action((f,o)=>{try{const stale=checkGenerated(buildFiles(f,o),o.out); if(stale.length){console.error('Stale or missing generated files:\n'+stale.join('\n')); process.exit(1);} console.log('Generated files are up to date.');}catch(e){console.error((e as Error).message);process.exit(1)}});
+program.parse();

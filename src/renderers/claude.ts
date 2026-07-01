@@ -1,0 +1,2 @@
+import type { NormalizedWorkflow } from '../normalize.js'; import type { GeneratedFile } from './shared.js'; import { md, notice } from './shared.js';
+export function renderClaude(w:NormalizedWorkflow, src='workflow.yaml'):GeneratedFile[]{ const content=`${notice(src)}\n---\nname: ${w.id}\ndescription: ${w.description}\n---\n\n${md(w,{when:true})}`; return [{path:`.claude/skills/${w.id}/SKILL.md`,content,target:'claude'}]; }
