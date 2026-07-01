@@ -1,132 +1,138 @@
 # Skillforge
 
-Skillforge is a deterministic TypeScript CLI that compiles one canonical workflow YAML file into agent-instruction artifacts for Claude Code, Codex, AGENTS.md, Cursor, and GitHub Copilot.
+Skillforge is a deterministic compiler and CI guardrail for agent instructions. It keeps one canonical workflow YAML file, renders target-specific agent artifacts, writes them safely, checks for drift, and can now import or convert existing agent instruction artifacts through the normalized Skillforge workflow IR.
 
-It deliberately does **not** run LLM calls, sync with cloud services, add a web app, benchmark agents, or promise identical semantics across tools. Each target supports different metadata and invocation behavior, so Skillforge renders target-specific files and emits semantic-loss warnings when guidance can only be advisory.
+Skillforge does **not** call LLMs, perform cloud sync, or infer hidden semantics. Import and conversion are conservative and deterministic.
 
-## Install
+## Source-of-truth workflow YAML
 
-```bash
-npm install
-npm run build
-```
-
-When published, install and run the `skillforge` binary from the package. During development, use `node dist/cli.js` after building or `npm run dev -- ...`.
-
-## CLI usage
+A Skillforge workflow is a YAML document with an id, title, description, triggers, scope, workflow steps, commands, safety guidance, outputs, and target settings.
 
 ```bash
-skillforge init [--force]
-skillforge validate <workflow.yaml>
-skillforge build <workflow.yaml> [--targets claude,codex,agents,cursor,copilot] [--out <dir>] [--write] [--force]
-skillforge diff <workflow.yaml> [--targets ...] [--out <dir>]
-skillforge check <workflow.yaml> [--targets ...] [--out <dir>]
+skillforge init --out skillforge.workflow.yaml
+skillforge validate skillforge.workflow.yaml
 ```
 
-`--out` defaults to the current directory. `build` without `--write` is a dry run. `check` is the CI command: it validates, renders, and fails if generated files are missing or stale.
+## Generated target formats
 
-## Example workflow
+From one workflow YAML, Skillforge renders:
 
-```yaml
-id: code-change-verification
-title: Code Change Verification
-description: Run mandatory verification before handing off code changes.
-version: 0.1.0
-triggers:
-  phrases: [verify changes]
-  globs: [src/**/*.ts, tests/**/*.ts]
-  manual: true
-scope:
-  paths: [src/**, tests/**]
-workflow:
-  goal: Verify code changes before final response.
-  steps:
-    - Review the diff and identify affected areas.
-    - Run lint, typecheck, and relevant tests.
-commands:
-  verify: [npm run build, npm test]
-outputs:
-  successCriteria:
-    - Verification commands are listed.
-```
+- Claude skill: `.claude/skills/<id>/SKILL.md`
+- Codex skill: `.agents/skills/<id>/SKILL.md`
+- Optional Codex metadata: `.agents/skills/<id>/agents/openai.yaml`
+- Cursor rule: `.cursor/rules/<id>.mdc`
+- GitHub Copilot instruction: `.github/instructions/<id>.instructions.md`
+- Managed AGENTS.md section: `AGENTS.md`
 
-Required fields are `id`, `title`, `description`, `workflow.goal`, and at least one `workflow.steps` item. `id` must be kebab-case. Unknown top-level fields produce warnings and are ignored.
+Frontmatter is emitted first for formats that require it, followed by a generated notice.
 
-## Generated paths and target mapping
-
-| Target | Output |
-| --- | --- |
-| Claude Code | `.claude/skills/<id>/SKILL.md` |
-| Codex | `.agents/skills/<id>/SKILL.md` |
-| AGENTS.md | `AGENTS.md` managed section |
-| Cursor | `.cursor/rules/<id>.mdc` |
-| GitHub Copilot | `.github/instructions/<id>.instructions.md` |
-
-Markdown targets that support frontmatter start with YAML frontmatter as the first bytes in the file, followed by the generated notice. AGENTS.md does not use frontmatter.
-
-## Semantic-loss warnings
-
-Skillforge warns when a target cannot enforce a workflow concept. For example, `allowedTools` cannot be enforced by AGENTS.md, Cursor, or Copilot and is rendered as text guidance only. Target-scoped warnings appear only for selected targets. Long always-on output also warns:
-
-- `agents.contextBloat` when a managed AGENTS.md section is over 1,200 words.
-- `copilot.contextBloat` when a Copilot instruction file is over 800 words.
-
-Dangerous command patterns such as `rm -rf /`, `curl ... | bash`, and obvious secret variables produce warnings. If the workflow mentions testing, linting, validation, verification, type checking, or builds but defines no commands, Skillforge warns with `commands.missingVerification`.
-
-## Generated markers and safe writing
-
-Directly generated files are overwritten only when the file is absent, already contains the Skillforge generated marker, or `--force` is passed. Skillforge never deletes user files.
-
-AGENTS.md uses managed sections:
-
-```markdown
-<!-- skillforge:<id> BEGIN -->
-...
-<!-- skillforge:<id> END -->
-```
-
-Only the matching section is replaced. Unmanaged content and other Skillforge sections are preserved.
-
-## Codex `agents/openai.yaml`
-
-Codex skill generation always writes `.agents/skills/<id>/SKILL.md`. Skillforge generates `.agents/skills/<id>/agents/openai.yaml` only when useful Codex policy metadata is explicitly requested:
-
-```yaml
-targets:
-  codex:
-    enabled: true
-    allowImplicitInvocation: false
-```
-
-That produces:
-
-```yaml
-policy:
-  allow_implicit_invocation: false
-```
-
-If `allowImplicitInvocation` is omitted or true, no `openai.yaml` is generated. Skillforge does not invent undocumented `skill` or `version` fields.
-
-## CI usage
+## Build, diff, and check
 
 ```bash
-npm run build
-skillforge build skillforge.workflow.yaml --write
-skillforge check skillforge.workflow.yaml
+skillforge build skillforge.workflow.yaml --out generated --write
+skillforge diff skillforge.workflow.yaml --out generated
+skillforge check skillforge.workflow.yaml --out generated
 ```
 
-Run `skillforge check` in CI to ensure generated artifacts are present and up to date.
+Use selected targets when needed:
+
+```bash
+skillforge build skillforge.workflow.yaml --targets claude,codex --out generated --write
+```
+
+## Import existing artifacts
+
+`skillforge import <source>` parses an existing supported artifact into canonical workflow YAML. Use `--from` when format detection is ambiguous.
+
+```bash
+skillforge import .claude/skills/review/SKILL.md --from claude --out review.workflow.yaml
+skillforge import .agents/skills/review/SKILL.md --from codex --out review.workflow.yaml
+skillforge import .cursor/rules/review.mdc --out review.workflow.yaml
+skillforge import .github/instructions/review.instructions.md --out review.workflow.yaml
+skillforge import AGENTS.md --from agents --id review --out review.workflow.yaml
+```
+
+If `--out` is omitted, YAML is printed to stdout. Existing output files are not overwritten unless `--force` is provided. Imported YAML includes comments reminding you to review semantic-loss warnings.
+
+## Convert between formats
+
+`skillforge convert <source>` imports the source artifact, normalizes it into the workflow IR, and renders selected target outputs using the same renderers as workflow builds.
+
+```bash
+skillforge convert .claude/skills/review/SKILL.md --from claude --to codex --out generated --write
+skillforge convert .cursor/rules/review.mdc --to claude,codex,copilot --out generated --write
+skillforge convert AGENTS.md --from agents --id review --to claude --out generated --write
+```
+
+If `--to` is omitted, Skillforge renders all targets except the detected source format. Without `--write`, convert is a dry run that prints generated paths and diagnostics.
+
+## Inspect
+
+`inspect` prints a small normalized summary without writing files.
+
+```bash
+skillforge inspect skillforge.workflow.yaml
+skillforge inspect .claude/skills/review/SKILL.md --from claude
+```
+
+## Format detection
+
+Skillforge detects supported formats conservatively:
+
+- `AGENTS.md` by basename.
+- Copilot instructions by `.instructions.md` with `applyTo` frontmatter.
+- Cursor rules by `.mdc` with Cursor frontmatter keys.
+- Claude and Codex skills by `SKILL.md` under `.claude/skills/` or `.agents/skills/` with `name` and `description` frontmatter.
+
+A bare or otherwise ambiguous `SKILL.md` fails with `import.ambiguousFormat`; pass `--from claude` or `--from codex`.
+
+## Semantic loss
+
+Different agent ecosystems do not expose identical behavior. Skillforge reports target-aware diagnostics rather than pretending conversions are equivalent.
+
+Known examples:
+
+- Claude/Codex skill invocation cannot be perfectly mapped to persistent Copilot instructions.
+- Copilot instructions cannot enforce tool permissions.
+- Cursor `alwaysApply` cannot be represented exactly as Claude/Codex skill invocation.
+- Freeform AGENTS.md import is approximate and may lose structure.
+- Importers are deterministic and conservative.
+
+## Safe writing and generated markers
+
+Skillforge refuses to overwrite unmanaged target files unless `--force` is supplied. Generated files include `Generated by skillforge` notices or `skillforge:<id>` markers. The AGENTS.md writer updates only the matching managed section and preserves unmanaged content outside that section.
+
+## Codex openai.yaml behavior
+
+Skillforge writes `.agents/skills/<id>/agents/openai.yaml` only when `targets.codex.allowImplicitInvocation` is `false`. During Codex import, `policy.allow_implicit_invocation: false` maps back to `targets.codex.allowImplicitInvocation: false`. Unsupported metadata is reported as a warning and not preserved.
+
+## Package contents
+
+The npm package publishes only runtime artifacts needed by users: `dist/`, `README.md`, `package.json`, and deliberate examples. Source, tests, coverage, scratch files, logs, zip archives, and root generated workflow files are excluded by the package `files` whitelist.
+
+## CI example
+
+```yaml
+name: skillforge
+on: [push, pull_request]
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run build
+      - run: node dist/cli.js check skillforge.workflow.yaml
+```
 
 ## Troubleshooting
 
-- `error file.notFound`: the workflow path does not exist. Check the path passed to the command.
-- `error yaml`: the workflow is not valid YAML, or the file is empty.
-- `error targets.invalid`: a target name is not one of `claude`, `codex`, `agents`, `cursor`, or `copilot`.
-- Stale generated files: run `skillforge build <workflow> --write` and commit the updated artifacts.
-- Refusing to overwrite unmanaged files: Skillforge found an existing file without its generated marker. Move the file, add `--force`, or choose a different output directory.
-
-## Current limitations
-
-- Skillforge renders deterministic guidance; it cannot make target platforms enforce unsupported behavior.
-- Diff output is intentionally simple and not a full git-style diff.
-- The workflow schema is intentionally small for the MVP.
+- Invalid target: use one of `claude,codex,agents,cursor,copilot`.
+- Ambiguous `SKILL.md`: pass `--from claude` or `--from codex`.
+- Missing source file: verify the path and working directory.
+- Malformed frontmatter: YAML frontmatter must be at the first byte, or immediately after a BOM.
+- Refusing unmanaged overwrite: pass `--force` only if replacing the file is intentional.
+- Stale generated files: run `skillforge diff` to inspect drift, then `skillforge build --write` to update.

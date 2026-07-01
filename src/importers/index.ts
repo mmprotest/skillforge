@@ -1,0 +1,6 @@
+import { statSync } from 'node:fs';
+import { detectSourceFormat, parseSourceFormat } from './detect.js';
+import type { ImportOptions, ImportResult, SourceFormat } from './types.js';
+import { importClaude } from './claude.js'; import { importCodex } from './codex.js'; import { importCursor } from './cursor.js'; import { importCopilot } from './copilot.js'; import { importAgents } from './agents.js';
+export function importArtifact(source:string, opts:ImportOptions={}): ImportResult { try { if (statSync(source).isDirectory()) throw new Error(`error file.isDirectory:\n  Source path is a directory, not a file: ${source}`); } catch(e){ if((e as any).code==='ENOENT') throw new Error(`error file.notFound:\n  Source file not found: ${source}`); throw e; } const fmt:SourceFormat = opts.from ? parseSourceFormat(opts.from) : (()=>{const d=detectSourceFormat(source); if(d.error) throw new Error(d.error); return d.format!;})(); switch(fmt){ case 'claude': return importClaude(source); case 'codex': return importCodex(source); case 'cursor': return importCursor(source); case 'copilot': return importCopilot(source); case 'agents': return importAgents(source, opts.id); } }
+export { parseSourceFormat };

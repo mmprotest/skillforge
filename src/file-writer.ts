@@ -15,7 +15,7 @@ export function materialize(file: GeneratedFile, base: string, force = false): {
     const id = m?.[1];
     if (id) {
       const re = new RegExp(`<!-- skillforge:${id} BEGIN -->[\\s\\S]*?<!-- skillforge:${id} END -->\\n?`);
-      content = re.test(old) ? old.replace(re, content) : `${old.replace(/\s*$/, '')}\n\n${content}`;
+      content = re.test(old) ? old.replace(re, content) : `${old}${old.endsWith('\n') ? '' : '\n'}\n${content}`;
     }
   }
   const old = existsSync(p) ? readFileSync(p, 'utf8') : undefined;

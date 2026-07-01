@@ -1,0 +1,7 @@
+import { formatDiagnostics, hasErrors } from '../diagnostics.js';
+import { importArtifact } from '../importers/index.js';
+import type { SourceFormat } from '../importers/types.js';
+import { parseTargets, renderWorkflow } from '../renderers/index.js';
+import { writeGenerated } from '../file-writer.js';
+import { defaultTargets, conversionDiagnostics } from '../converters/convert.js';
+export async function runConvertCommand(args:{source:string; from?:SourceFormat; to?:string; out:string; write?:boolean; force?:boolean; id?:string}) { const imported=importArtifact(args.source,{from:args.from,id:args.id}); let targets; try { targets=args.to ? parseTargets(args.to)! : defaultTargets(imported.sourceFormat); } catch(e) { return {code:1,stdout:'',stderr:(e as Error).message}; } const diags=[...imported.diagnostics,...conversionDiagnostics(imported.workflow,imported.sourceFormat,targets,imported.metadata)]; if (hasErrors(diags)) return {code:1,stdout:'',stderr:formatDiagnostics(diags)}; const files=renderWorkflow(imported.workflow,args.source,targets); if (!args.write) return {code:0,stdout:`${formatDiagnostics(diags)}\nGenerated files (dry run):\n${files.map(f=>`${f.target}\t${f.path}`).join('\n')}`,stderr:''}; try { return {code:0,stdout:`${formatDiagnostics(diags)}\nWritten files:\n${writeGenerated(files,args.out,!!args.force).join('\n')}`,stderr:''}; } catch(e) { return {code:1,stdout:'',stderr:(e as Error).message}; } }
